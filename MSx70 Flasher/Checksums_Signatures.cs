@@ -108,7 +108,7 @@ namespace MSx70_Flasher
                     end = 0x966C;
                     knownMO3 = true;
                 }
-                if (binref.Contains("911S") || binref.Contains("901S"))
+                if (binref.Contains("912S") || binref.Contains("911S"))
                 {
                     mo3Location = 0x8E4C;
                     start = 0x8E64;
