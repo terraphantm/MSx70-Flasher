@@ -72,57 +72,133 @@ namespace MSx70_Flasher
             return DataToFlash;
         }
 
-        private byte[] FixMO3CheckSum(byte[] array, uint mo3Location, uint mo3Start, uint mo3End)
+        public byte[] FixMO3CheckSum(byte[] array)
         {
-            /*Todo - actually write this code. Python example below
-                import struct
-                import sys
+            /*
+            Decided to hardcode the checksum ranges and locations for known program variants. 
+            Could theoretically also write a fallback to search for the locations in a full bin if an unknown binary is encountered, but not sure that's really needed. 
+            Below should be all of the common variants and then some.
+            */
 
-                def CalcMO3CS(binary):
-                    CSLocation = 0x48EA8 #Location of checksum
-                    cs = ''
+            int mo3Location = 0;
+            int start = 0;
+            int end = 0;
+            
+            string binref = System.Text.Encoding.ASCII.GetString(array.Skip(0x10).Take(0xC).ToArray());
 
-                    for i in range (0, 2):
-                        binary.seek(CSLocation + 4*i)
-                        cs += format(struct.unpack('>L',binary.read(4))[0],'02x').rjust(8,'0') #Reads high/low checksums, returns MSB first
-                    print ('Stored CS: ' + cs)
+            bool knownMO3 = false;
 
-                    binary.seek(0x803B4) #Location of MO3 start pointer
-                    start = struct.unpack('>L',binary.read(4))[0] # '>L' = Read as Big Endian Long Unsigned
-                    binary.seek(0x803B8) #Location of M03 end pointer
-                    end = struct.unpack('>L',binary.read(4))[0] 
-                    index = start
-                    csCalc = 0x123456789ABCDEF
+            if (binref.Contains("0049R20")) //MSS70 -- thus far have only seen 820S and 840S in the wild, which appear to have similar (if not identical) layouts
+            {
+                if (binref.Contains("820S") || binref.Contains("840S"))
+                {
+                    mo3Location = 0x8EA8;
+                    start = 0x8EC0;
+                    end = 0x96F0;
+                    knownMO3 = true;
+                }
+            }
 
-                    while index < end : 
-                        binary.seek(index - 0x800000)
-                        csCalc += struct.unpack('>L',binary.read(4))[0]
-                        index += 4
+            if (binref.Contains("0049PP0"))
+            {
+                if (binref.Contains("921S"))
+                {
+                    mo3Location = 0x8E28;
+                    start = 0x8E40;
+                    end = 0x966C;
+                    knownMO3 = true;
+                }
+                if (binref.Contains("911S") || binref.Contains("901S"))
+                {
+                    mo3Location = 0x8E4C;
+                    start = 0x8E64;
+                    end = 0x9690;
+                    knownMO3 = true;
+                }
+                if (binref.Contains("901S"))
+                {
+                    mo3Location = 0x8E3C;
+                    start = 0x8E54;
+                    end = 0x9680;
+                    knownMO3 = true;
+                }
+                if (binref.Contains("823S") || binref.Contains("822S"))
+                {
+                    mo3Location = 0x8E54;
+                    start = 0x8E6C;
+                    end = 0x9698;
+                    knownMO3 = true;
+                }
+                if (binref.Contains("810S"))
+                {
+                    mo3Location = 0x8E38;
+                    start = 0x8E50;
+                    end = 0x967C;
+                    knownMO3 = true;
+                }
+                if (binref.Contains("740S"))
+                {
+                    mo3Location = 0x8D54;
+                    start = 0x8D6C;
+                    end = 0x9598;
+                    knownMO3 = true;
+                }
+                if (binref.Contains("732S") || binref.Contains("731S") || binref.Contains("730S"))
+                {
+                    mo3Location = 0x8D50;
+                    start = 0x8D68;
+                    end = 0x9594;
+                    knownMO3 = true;
+                }
+                if (binref.Contains("721S"))
+                {
+                    mo3Location = 0x8D48;
+                    start = 0x8D60;
+                    end = 0x958C;
+                    knownMO3 = true;
+                }
+                if (binref.Contains("620S"))
+                {
+                    mo3Location = 0x88F4;
+                    start = 0x890C;
+                    end = 0x9150;
+                    knownMO3 = true;
+                }
+                if (binref.Contains("502S"))
+                {
+                    mo3Location = 0x8EE4;
+                    start = 0x8EFC;
+                    end = 0x96B0;
+                    knownMO3 = true;
+                }
+            }
 
 
-                    print ('Calculated CS: ' + format(csCalc,'02x').rjust(16,'0')[8:16] + format(csCalc,'02x').rjust(16,'0')[0:8])
+            if (!knownMO3)
+                Console.WriteLine("Unknown program variant, cannot fix MO3 checksum");
 
+            if (knownMO3)
+            {
+                UInt64 csCalc = 0x123456789ABCDEF;
+                int csHigh;
+                int csLow;
+                UInt64 sum;
 
-                if len(sys.argv) == 1:
-                    if sys.version_info[0] < 3:
-                        filename = raw_input("Enter path/filename: ")
-                    else:
-                        filename = input("Enter path/filename: ")
-                    print ("Note: You can also give filename as a command line argument\n")
-                else:
-                    filename = sys.argv[1]
+                for (int i = start; i < end; i += 4)
+                {
+                    sum = (UInt64)(((array[i] << 24) | (array[i + 1] << 16) | (array[i + 2] << 8) | array[i + 3]) & 0x00000000FFFFFFFF);
+                    csCalc += sum;
+                }
 
-                data = open(filename,"rb")
-                CalcMO3CS(data)
+                csHigh = (int)((csCalc & 0xFFFFFFFF00000000) >> 32);
+                csLow = (int)((csCalc & 0x00000000FFFFFFFF));
 
-            Issues: 
-                The start and end of the checked region can be progmatically determined, but as best as I can tell, the location of the actual checksum does not have an easy to find pointer
-                Unfortunately the "A5" bypass that is present in MS45 is broken in MSV70 and later
-            Strategies:
-                Hardcode checksum locations? Would need to do for each program version or only support certain versions
-                Just patch out the check altogether while preparing the program flash? Current RSA defeat strategy would basically force program to be flashed twice the first time around for that to work. 
-           
-             */
+                byte[] mo3 = BitConverter.GetBytes(csLow).Reverse().ToArray().Concat(BitConverter.GetBytes(csHigh).Reverse().ToArray()).ToArray();
+                Console.WriteLine(BitConverter.ToString(mo3));
+
+                for (int i = 0; i < mo3.Length; ++i)
+                    array[mo3Location + i] = mo3[i];
+            }
             return array;
         }
 
@@ -243,6 +319,8 @@ namespace MSx70_Flasher
 
         private uint GetChecksum(byte[] binary, uint checkSumSegmentNumberPointer, uint initialValue, uint MemSubtract)
         {
+            FixMO3CheckSum(binary);
+
             uint numberOfSegments = BitConverter.ToUInt32(binary.Skip((int)checkSumSegmentNumberPointer).Take(4).Reverse().ToArray(), 0);
             uint checksumStart = 0;
             uint checksumEnd = 0;

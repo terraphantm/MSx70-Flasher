@@ -638,10 +638,11 @@ namespace MSx70_Flasher
                     if (Global.openedFlash.Length > 0x40000)
                         toFlash = Global.openedFlash.Skip(0x40000).Take(0x1EB00).ToArray();
                     else
-                        toFlash = Global.openedFlash.Take(0x1FF80).ToArray();
+                        toFlash = Global.openedFlash.Take(0x1EB00).ToArray();
 
                     toFlash = ChecksumsSignatures.CorrectParameterChecksums(toFlash);
 
+                
 
                     this.Dispatcher.Invoke(() =>
                     {
